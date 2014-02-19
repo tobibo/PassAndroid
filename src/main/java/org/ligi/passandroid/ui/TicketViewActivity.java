@@ -3,6 +3,7 @@ package org.ligi.passandroid.ui;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v4.app.NavUtils;
 import android.support.v4.app.TaskStackBuilder;
@@ -14,12 +15,14 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import com.squareup.otto.Subscribe;
+
 import org.ligi.axt.AXT;
 import org.ligi.passandroid.App;
 import org.ligi.passandroid.R;
 import org.ligi.passandroid.TicketDefinitions;
+import org.ligi.passandroid.events.PassbookUpdatedEvent;
 import org.ligi.passandroid.helper.PassVisualizer;
-import org.ligi.passandroid.maps.PassbookMapsFacade;
 import org.ligi.passandroid.model.Passbook;
 import org.ligi.passandroid.model.ReducedPassInformation;
 
@@ -31,6 +34,8 @@ import butterknife.OnClick;
 
 public class TicketViewActivity extends TicketViewActivityBase {
 
+
+    private View mContentView;
 
     @OnClick(R.id.barcode_img)
     void onBarcodeClick() {
@@ -57,7 +62,10 @@ public class TicketViewActivity extends TicketViewActivityBase {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        mContentView = getLayoutInflater().inflate(R.layout.activity_ticket_view, null);
+        setContentView(mContentView);
 
+        ButterKnife.inject(this);
         if (!passbook.isValid()) { // don't deal with invalid passes
             new AlertDialog.Builder(this)
                     .setMessage(getString(R.string.pass_problem))
@@ -77,11 +85,12 @@ public class TicketViewActivity extends TicketViewActivityBase {
                     .show();
             return;
         }
+        new UpdatePassbookTask().execute(passbook);
 
-        View contentView = getLayoutInflater().inflate(R.layout.activity_ticket_view, null);
-        setContentView(contentView);
+        initView();
+    }
 
-        ButterKnife.inject(this);
+    private void initView() {
 
         barcode_img.setImageBitmap(passbook.getBarcodeBitmap(AXT.at(getWindowManager()).getSmallestSide() / 3));
         logo_img.setImageBitmap(passbook.getLogoBitmap());
@@ -90,7 +99,7 @@ public class TicketViewActivity extends TicketViewActivityBase {
         thumbnail_img.setImageBitmap(passbook.getThumbnailImage());
 
         if (findViewById(R.id.map_container) != null) {
-            if (!(passbook.getLocations().size() > 0 && PassbookMapsFacade.init(this))) {
+            if (!(passbook.getLocations().size() > 0 && org.ligi.passandroid.maps.PassbookMapsFacade.init(this))) {
                 findViewById(R.id.map_container).setVisibility(View.GONE);
             }
         }
@@ -115,7 +124,24 @@ public class TicketViewActivity extends TicketViewActivityBase {
         back_tv.setText(Html.fromHtml(back_str));
 
         Linkify.addLinks(back_tv, Linkify.ALL);
-        PassVisualizer.visualize(this, new ReducedPassInformation(passbook), contentView);
+        PassVisualizer.visualize(this, new ReducedPassInformation(passbook), mContentView);
+    }
+
+    @Subscribe
+    public void passbookUpdated(PassbookUpdatedEvent event) {
+
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        App.getBus().register(this);
+    }
+
+    @Override
+    protected void onPause() {
+        App.getBus().unregister(this);
+        super.onPause();
     }
 
     public String getPassDebugInfo(Passbook passbook) {
@@ -158,5 +184,16 @@ public class TicketViewActivity extends TicketViewActivityBase {
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    class UpdatePassbookTask extends AsyncTask<Passbook,Void,Void> {
+
+        @Override
+        protected Void doInBackground(Passbook... params) {
+            for (int i=0;i<params.length;i++) {
+                params[i].update(TicketViewActivity.this);
+            }
+            return null;
+        }
     }
 }

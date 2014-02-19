@@ -1,22 +1,37 @@
 package org.ligi.passandroid.model;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 
 import com.google.zxing.BarcodeFormat;
+import com.squareup.okhttp.OkHttpClient;
 
 import org.joda.time.DateTime;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.ligi.axt.AXT;
+import org.ligi.passandroid.App;
 import org.ligi.passandroid.Tracker;
+import org.ligi.passandroid.events.PassbookUpdatedEvent;
 import org.ligi.passandroid.helper.BarcodeHelper;
 import org.ligi.passandroid.helper.SafeJSONReader;
+import org.ligi.passandroid.ui.UnzipPassController;
 import org.ligi.tracedroid.logging.Log;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -25,7 +40,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Passbook {
-
     private String path;
     private String id;
     private String type;
@@ -40,6 +54,12 @@ public class Passbook {
     private List<PassLocation> locations = new ArrayList<PassLocation>();
     private JSONObject eventTicket = null;
     public String plainJsonString;
+
+
+    private String serialNumber;
+    private String authenticationToken;
+    private String passTypeIdentifier;
+    private String webServiceURL;
 
     public static final String[] TYPES = new String[]{"coupon", "eventTicket", "boardingPass", "generic", "storeCard"};
 
@@ -154,6 +174,25 @@ public class Passbook {
             } catch (JSONException e) {
             }
 
+            try {
+                passTypeIdentifier = pass_json.getString("passTypeIdentifier");
+            } catch (JSONException e) {
+            }
+
+            try {
+                webServiceURL = pass_json.getString("webServiceURL");
+            } catch (JSONException e) {
+            }
+
+            try {
+                serialNumber = pass_json.getString("serialNumber");
+            } catch (JSONException e) {
+            }
+
+            try {
+                authenticationToken = pass_json.getString("authenticationToken");
+            } catch (JSONException e) {
+            }
 
             // try to find in a predefined set of tickets
 
@@ -459,5 +498,70 @@ public class Passbook {
 
     public String getId() {
         return id;
+    }
+
+    public void update(Context context) {
+        if (this.webServiceURL != null && this.webServiceURL.length() > 0) {
+            OkHttpClient client = new OkHttpClient();
+            try {
+                URL url = new URL(this.webServiceURL + "v1/passes/" + this.passTypeIdentifier + "/" + this.serialNumber);
+                HttpURLConnection connection = client.open(url);
+
+                try {
+                    connection.setRequestMethod("GET");
+                    connection.addRequestProperty("HTTP_AUTHORIZATION", "ApplePass " + this.authenticationToken);
+                    String path = context.getFilesDir().getAbsolutePath();
+                    File f = new File(path + "/" + this.passTypeIdentifier + "_" + this.serialNumber + "_" + this.id + "_etag.txt");
+                    String etag = null;
+                    if (f.exists()) {
+                        //Read text from file
+                        StringBuilder text = new StringBuilder();
+
+                        try {
+                            BufferedReader br = new BufferedReader(new FileReader(f));
+                            etag = br.readLine();
+                        } catch (IOException e) {
+                            //You'll need to add proper error handling here
+                        }
+                        if (etag != null) {
+                            connection.addRequestProperty("If-None-Match", etag);
+                        }
+                    }
+                    InputStream in = null;
+                    try {
+
+                        // Read the response.
+                        in = new BufferedInputStream(connection.getInputStream());
+                        int responseCode = connection.getResponseCode();
+                        if (responseCode == 200) {
+                            String etagField = connection.getHeaderField("ETag");
+                            FileWriter fileWriter = new FileWriter(f);
+                            fileWriter.write(etagField);
+                            fileWriter.flush();
+                            fileWriter.close();
+                            UnzipPassController.processInputStream(in, context, new UnzipPassController.SuccessCallback() {
+                                @Override
+                                public void call(String pathToPassbook) {
+                                    PassbookUpdatedEvent pEvent = new PassbookUpdatedEvent();
+                                    pEvent.pathToPassbook = pathToPassbook;
+                                    App.getBus().post(pEvent);
+
+                                }
+                            }, new UnzipPassController.SilentFail());
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } finally {
+                    }
+
+                } catch (ProtocolException e) {
+                    e.printStackTrace();
+                }
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }

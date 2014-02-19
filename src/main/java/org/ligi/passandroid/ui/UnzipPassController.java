@@ -9,6 +9,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.ligi.axt.AXT;
 import org.ligi.passandroid.TicketDefinitions;
+import org.ligi.passandroid.model.Passbook;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -76,21 +77,24 @@ public class UnzipPassController {
 
         JSONObject manifest_json;
         try {
-            manifest_json = new JSONObject(AXT.at(new File(path + "/manifest.json")).loadToString());
+            manifest_json = new JSONObject(AXT.at(new File(path + "/pass.json")).loadToString());
         } catch (Exception e) {
             failCallback.fail("Problem with manifest.json: " + e);
             return;
         }
 
         try {
-            String rename_str = TicketDefinitions.getPassesDir(context) + "/" + manifest_json.getString("pass.json");
+            String rename_str = TicketDefinitions.getPassesDir(context) + "/" + manifest_json.getString("passTypeIdentifier") + "_" + manifest_json.getString("serialNumber");
             File rename_file = new File(rename_str);
 
             if (rename_file.exists()) {
                 AXT.at(rename_file).deleteRecursive();
             }
 
+
+
             new File(path + "/").renameTo(rename_file);
+            Passbook p = new Passbook(rename_str);
             path = rename_str;
         } catch (JSONException e) {
             failCallback.fail("Problem with pass.json: " + e);

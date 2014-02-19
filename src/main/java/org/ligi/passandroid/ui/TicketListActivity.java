@@ -31,9 +31,11 @@ import org.ligi.passandroid.App;
 import org.ligi.passandroid.R;
 import org.ligi.passandroid.Tracker;
 import org.ligi.passandroid.events.NavigationOpenedEvent;
+import org.ligi.passandroid.events.PassbookUpdatedEvent;
 import org.ligi.passandroid.events.SortOrderChangeEvent;
 import org.ligi.passandroid.events.TypeFocusEvent;
 import org.ligi.passandroid.helper.PassVisualizer;
+import org.ligi.passandroid.model.Passbook;
 import org.ligi.tracedroid.TraceDroid;
 import org.ligi.tracedroid.logging.Log;
 import org.ligi.tracedroid.sending.TraceDroidEmailSender;
@@ -49,7 +51,6 @@ import uk.co.senab.actionbarpulltorefresh.library.ActionBarPullToRefresh;
 import uk.co.senab.actionbarpulltorefresh.library.listeners.OnRefreshListener;
 
 import static org.ligi.passandroid.ui.UnzipPassController.SilentFail;
-import static org.ligi.passandroid.ui.UnzipPassController.SilentWin;
 
 public class TicketListActivity extends ActionBarActivity {
 
@@ -83,6 +84,11 @@ public class TicketListActivity extends ActionBarActivity {
     public void typeFocus(TypeFocusEvent typeFocusEvent) {
         scrollToType(typeFocusEvent.type);
         drawer.closeDrawers();
+    }
+
+    @Subscribe public void passbookUpdated(PassbookUpdatedEvent event) {
+        passadapter = new PassAdapter();
+        listView.setAdapter(passadapter);
     }
 
     @OnItemClick(R.id.content_list)
@@ -240,7 +246,7 @@ public class TicketListActivity extends ActionBarActivity {
 
         App.getBus().register(this);
 
-        refreshPasses();
+
     }
 
 
@@ -305,7 +311,13 @@ public class TicketListActivity extends ActionBarActivity {
         @Override
         protected InputStream doInBackground(Void... params) {
             InputStream ins = super.doInBackground(params);
-            UnzipPassController.processInputStream(ins, ticketImportActivity, new SilentWin(), new SilentFail());
+            UnzipPassController.processInputStream(ins, ticketImportActivity, new UnzipPassController.SuccessCallback() {
+                @Override
+                public void call(String pathToPassbook) {
+                    Passbook passbook = new Passbook(pathToPassbook);
+                    passbook.update(TicketListActivity.this);
+                }
+            }, new SilentFail());
             return ins;
         }
 
@@ -378,9 +390,9 @@ public class TicketListActivity extends ActionBarActivity {
 
             // note to future_me: yea one thinks we only need to search root here, but root was /system for me and so
             // did not contain "/SDCARD" #dontoptimize
-            // on my phone:
+            // on my phone:sdcard
             // search in /system
-            // (26110): search in /mnt/sdcard
+            // (26110): search in /mnt/
             // (26110): search in /cache
             // (26110): search in /data
             search_in(Environment.getRootDirectory().toString());

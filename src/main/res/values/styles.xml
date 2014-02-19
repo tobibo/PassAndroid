@@ -2,6 +2,13 @@
 
     <style name="AppBaseTheme" parent="Theme.AppCompat.Light">
         <item name="android:windowBackground">@color/window_bg</item>
+
+    </style>
+
+    <!-- general styles for the action bar -->
+    <style name="MyActionBar" parent="@style/Widget.AppCompat.ActionBar">
+        <!-- <item name="android:indeterminateProgressStyle">@style/IndeterminateProgress</item>
+        <item name="indeterminateProgressStyle">@style/IndeterminateProgress</item> -->
     </style>
 
     <style name="AppTheme" parent="AppBaseTheme" />

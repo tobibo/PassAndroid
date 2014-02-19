@@ -22,7 +22,7 @@ public class App extends Application {
         Tracker.get().init(this);
         initTraceDroid();
 
-        bus = new Bus();
+        bus = new MainThreadBus();
         settings = new Settings(this);
         passStore = new PassStore(this);
     }
